@@ -208,7 +208,7 @@ function PublicLayout({ children }: { children: React.ReactNode }) {
             </Link>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Globe className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">status.saffnco.app</span>
+              <span className="hidden sm:inline">monitor.saffnco.app</span>
             </div>
           </div>
         </motion.header>

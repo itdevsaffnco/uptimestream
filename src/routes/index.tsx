@@ -1,9 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { fetchPublicMonitors } from "@/lib/uptime-robot.server";
 import type { PublicMonitor, DayStatus } from "@/lib/uptime-robot.server";
 import { staggerContainer, staggerItem } from "@/components/PageTransition";
-import { CheckCircle2, AlertTriangle, XCircle, Globe, Activity } from "lucide-react";
+import { CheckCircle2, AlertTriangle, XCircle, Globe, Activity, Sun, Moon } from "lucide-react";
+import { useDarkMode } from "@/hooks/use-dark-mode";
+
+const REFETCH_INTERVAL = 60_000;
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -26,7 +31,16 @@ export const Route = createFileRoute("/")({
 // ──────────────────────────────────────────────
 
 function PublicStatusPage() {
-  const { monitors } = Route.useLoaderData();
+  const { monitors: initialMonitors } = Route.useLoaderData();
+
+  const { data: monitors = initialMonitors, dataUpdatedAt } = useQuery({
+    queryKey: ["public-monitors"],
+    queryFn: () => fetchPublicMonitors(),
+    initialData: initialMonitors,
+    initialDataUpdatedAt: Date.now(),
+    refetchInterval: REFETCH_INTERVAL,
+    staleTime: REFETCH_INTERVAL - 5_000,
+  });
 
   const allUp = monitors.every((m) => m.status === "up");
   const anyDown = monitors.some((m) => m.status === "down");
@@ -34,6 +48,9 @@ function PublicStatusPage() {
 
   return (
     <PublicLayout>
+      {/* Refresh indicator */}
+      <RefreshIndicator dataUpdatedAt={dataUpdatedAt} intervalMs={REFETCH_INTERVAL} />
+
       {/* Status banner */}
       <StatusBanner status={overallStatus} />
 
@@ -276,6 +293,8 @@ function Footer() {
 // ──────────────────────────────────────────────
 
 function PublicLayout({ children }: { children: React.ReactNode }) {
+  const [isDark, setIsDark] = useDarkMode();
+
   return (
     <div className="min-h-screen bg-background">
       <div className="sticky top-0 z-50 flex justify-center px-3 pt-3 sm:px-6 sm:pt-4">
@@ -293,9 +312,16 @@ function PublicLayout({ children }: { children: React.ReactNode }) {
                 <p className="text-[11px] text-muted-foreground">System Status</p>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Globe className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">monitor.saffnco.app</span>
+              <button
+                onClick={() => setIsDark(!isDark)}
+                className="ml-1 rounded-lg p-1.5 hover:bg-accent hover:text-accent-foreground transition-colors"
+                aria-label="Toggle dark mode"
+              >
+                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
             </div>
           </div>
         </motion.header>
@@ -329,6 +355,40 @@ function StatusBadge({ status }: { status: "up" | "down" | "degraded" }) {
       <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-current align-middle" />
       {label}
     </span>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Refresh indicator
+// ──────────────────────────────────────────────
+
+function RefreshIndicator({ dataUpdatedAt, intervalMs }: { dataUpdatedAt: number; intervalMs: number }) {
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [lastUpdatedStr, setLastUpdatedStr] = useState("");
+
+  useEffect(() => {
+    const update = () => {
+      const nextAt = dataUpdatedAt + intervalMs;
+      setSecondsLeft(Math.max(0, Math.round((nextAt - Date.now()) / 1000)));
+      setLastUpdatedStr(
+        new Date(dataUpdatedAt).toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          second: "2-digit",
+        })
+      );
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [dataUpdatedAt, intervalMs]);
+
+  return (
+    <div className="flex justify-end mb-4 -mt-2">
+      <p className="text-xs text-muted-foreground">
+        Last updated {lastUpdatedStr} &middot; Next update in {secondsLeft}s
+      </p>
+    </div>
   );
 }
 
